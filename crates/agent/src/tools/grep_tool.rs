@@ -1425,17 +1425,125 @@ mod tests {
         );
     }
 
-    // Helper function to extract file paths from grep results
-    fn extract_paths_from_results(results: &str) -> Vec<String> {
-        results
-            .lines()
-            .filter(|line| line.starts_with("## Matches in "))
-            .map(|line| {
-                line.strip_prefix("## Matches in ")
-                    .unwrap()
-                    .trim()
-                    .to_string()
+    #[gpui::test]
+    async fn test_grep_respects_ignore_file(cx: &mut TestAppContext) {
+        init_test(cx);
+        let fs = FakeFs::new(cx.executor());
+
+        // Create worktree with a .ignore file
+        fs.insert_tree(
+            path!("/root"),
+            json!({
+                ".gitignore": "",
+                ".ignore": r#"
+# Ignore generated data files
+*.jsonl
+.cache/**
+                "#,
+                "src": {
+                    "main.rs": "fn main() { let data = process(); }"
+                },
+                "data": {
+                    "large.jsonl": "{\"big\": \"line\"}",
+                    "small.json": "{\"key\": \"value\"}"
+                },
+                ".cache": {
+                    "index.bin": "binary data"
+                }
+            }),
+        )
+        .await;
+
+        let project = Project::test(fs, [path!("/root").as_ref()], cx).await;
+        project
+            .update(cx, |project, cx| {
+                project.find_or_create_worktree("/root", true, cx);
             })
-            .collect()
+            .await
+            .unwrap();
+
+        // Wait for worktree to be fully scanned
+        cx.executor().run_until_parked();
+
+        // Search for "process" - should find in src/main.rs
+        let result = run_grep_tool(
+            GrepToolInput {
+                regex: "process".to_string(),
+                include_pattern: None,
+                offset: 0,
+                case_sensitive: false,
+            },
+            project.clone(),
+            cx,
+        )
+        .await;
+        assert!(
+            result.contains("main.rs"),
+            "Should find match in src/main.rs"
+        );
+
+        // Search for "big" - should NOT find in data/large.jsonl because .ignore excludes *.jsonl
+        let result = run_grep_tool(
+            GrepToolInput {
+                regex: "big".to_string(),
+                include_pattern: None,
+                offset: 0,
+                case_sensitive: false,
+            },
+            project.clone(),
+            cx,
+        )
+        .await;
+        assert!(
+            !result.contains("large.jsonl"),
+            "Should NOT find in .ignore-excluded data/large.jsonl"
+        );
+
+        // Search for "value" - should find in data/small.json (not excluded)
+        let result = run_grep_tool(
+            GrepToolInput {
+                regex: "value".to_string(),
+                include_pattern: None,
+                offset: 0,
+                case_sensitive: false,
+            },
+            project.clone(),
+            cx,
+        )
+        .await;
+        assert!(
+            result.contains("small.json"),
+            "Should find in data/small.json (not excluded)"
+        );
+
+        // Search for "binary" - should NOT find in .cache/index.bin because .ignore excludes .cache/**
+        let result = run_grep_tool(
+            GrepToolInput {
+                regex: "binary".to_string(),
+                include_pattern: None,
+                offset: 0,
+                case_sensitive: false,
+            },
+            project,
+            cx,
+        )
+        .await;
+        assert!(
+            !result.contains("index.bin"),
+            "Should NOT find in .cache/index.bin (.ignore excludes .cache/**)"
+        );
     }
+}
+
+fn extract_paths_from_results(results: &str) -> Vec<String> {
+    results
+        .lines()
+        .filter(|line| line.starts_with("## Matches in "))
+        .map(|line| {
+            line.strip_prefix("## Matches in ")
+                .unwrap()
+                .trim()
+                .to_string()
+        })
+        .collect()
 }
