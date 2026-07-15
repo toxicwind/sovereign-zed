@@ -12,7 +12,7 @@ use project::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use settings::Settings;
-use std::{cmp, fmt::Write, sync::Arc};
+use std::{cmp, fmt::Write, path::Path, sync::Arc};
 use util::RangeExt;
 use util::markdown::{MarkdownCodeBlock, MarkdownInlineCode};
 use util::paths::PathMatcher;
@@ -145,10 +145,26 @@ impl AgentTool for GrepTool {
                 // Exclude global file_scan_exclusions and private_files settings
                 let exclude_matcher = {
                     let global_settings = WorktreeSettings::get_global(cx);
-                    let exclude_patterns = global_settings
+                    let mut exclude_patterns: Vec<String> = global_settings
                         .file_scan_exclusions
                         .sources()
-                        .chain(global_settings.private_files.sources());
+                        .chain(global_settings.private_files.sources())
+                        .map(|s| s.to_string())
+                        .collect();
+
+                    // Also load patterns from .ignore files in project roots
+                    for worktree in project.read(cx).worktrees(cx) {
+                        let root = worktree.read(cx).abs_path();
+                        let ignore_path = root.join(".ignore");
+                        if let Ok(content) = std::fs::read_to_string(&ignore_path) {
+                            for line in content.lines() {
+                                let line = line.trim();
+                                if !line.is_empty() && !line.starts_with('#') {
+                                    exclude_patterns.push(line.to_string());
+                                }
+                            }
+                        }
+                    }
 
                     PathMatcher::new(exclude_patterns, path_style)
                         .map_err(|error| format!("invalid exclude pattern: {error}"))?
