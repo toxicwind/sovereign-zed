@@ -1,9 +1,14 @@
 [build]
 # v0 mangling scheme provides more detailed backtraces around closures
 rustflags = ["-C", "symbol-mangling-version=v0", "--cfg", "tokio_unstable"]
+# Host default: sccache (local disk cache under SCCACHE_DIR, default ~/.cache/sccache)
+# Override with: RUSTC_WRAPPER= cargo build …
+rustc-wrapper = "sccache"
 
 [alias]
 xtask = "run --package xtask --"
+# Default cached release build used by agents / install-linux wrappers
+build-release-cached = ["build", "--release"]
 perf-test = ["test", "--profile", "release-fast", "--lib", "--bins", "--tests", "--all-features", "--config", "target.'cfg(true)'.runner='cargo run -p perf --release'", "--config", "target.'cfg(true)'.rustflags=[\"--cfg\", \"perf_enabled\"]"]
 # Keep similar flags here to share some ccache
 perf-compare = ["run", "--profile", "release-fast", "-p", "perf", "--config", "target.'cfg(true)'.rustflags=[\"--cfg\", \"perf_enabled\"]", "--", "compare"]
@@ -20,5 +25,13 @@ rustflags = [
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=lld"]
 
+# x86_64 Linux: mold for faster links (installed via pacman)
+[target.x86_64-unknown-linux-gnu]
+linker = "clang"
+rustflags = ["-C", "link-arg=-fuse-ld=mold"]
+
 [env]
 MACOSX_DEPLOYMENT_TARGET = "10.15.7"
+# sccache local dir (also set in environment.d if desired)
+SCCACHE_DIR = { value = "/home/toxic/.cache/sccache", force = false }
+
