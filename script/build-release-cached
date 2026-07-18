@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# Cached release build for Zed (sccache + mold via .cargo/config.toml).
+# Usage: script/build-release-cached [extra cargo args…]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+export SCCACHE_DIR="${SCCACHE_DIR:-$HOME/.cache/sccache}"
+mkdir -p "$SCCACHE_DIR"
+export RUSTC_WRAPPER="${RUSTC_WRAPPER:-$(command -v sccache)}"
+export CARGO_TERM_PROGRESS_WHEN="${CARGO_TERM_PROGRESS_WHEN:-never}"
+export CARGO_TERM_COLOR="${CARGO_TERM_COLOR:-never}"
+
+echo "RUSTC_WRAPPER=$RUSTC_WRAPPER"
+echo "SCCACHE_DIR=$SCCACHE_DIR"
+sccache --show-stats 2>/dev/null | head -8 || true
+
+# Build editor + CLI (what install-linux needs)
+cargo build --release -p zed -p cli "$@"
+
+echo "--- sccache after ---"
+sccache --show-stats 2>/dev/null | head -12 || true
+ls -la target/release/zed target/release/cli 2>/dev/null || ls -la target/release/zed 2>/dev/null
