@@ -7,32 +7,37 @@ DRY_RUN="${1:-}"
 UPSTREAM="origin"       # https://github.com/zed-industries/zed.git
 FORK="fork"             # https://github.com/toxicwind/zed.git
 
+# Find our fork commits by looking for commits NOT on upstream/main
 echo "=== Syncing $UPSTREAM/main → $FORK/main ==="
 git fetch "$UPSTREAM" main
-git checkout main
+
+OUR_BASE=$(git merge-base HEAD "$UPSTREAM/main")
 UPSTREAM_SHA=$(git rev-parse "$UPSTREAM/main")
-OUR_SHA=$(git rev-parse "main")
-OUR_CHERRY=$(git log main --oneline --grep="agent: Respect .ignore" --format="%H" | head -n1)
+HEAD_SHA=$(git rev-parse HEAD)
 
-echo "Upstream:  $UPSTREAM_SHA"
-echo "Private:   $OUR_SHA"
-echo "Our patch: $OUR_CHERRY"
+echo "Upstream SHA: $UPSTREAM_SHA"
+echo "Fork HEAD:    $HEAD_SHA"
+echo "Merge base:   $OUR_BASE"
 
-if [ "$UPSTREAM_SHA" = "$OUR_SHA" ]; then
-    echo "Already in sync."
-    exit 0
-fi
-
-# Super-merge: rebase our patch on top of latest upstream
-if [ -n "$OUR_CHERRY" ]; then
-    echo "Rebasing our patch onto latest upstream..."
-    git reset --hard "$UPSTREAM/main"
-    GIT_EDITOR=true git cherry-pick "$OUR_CHERRY" || {
-        echo "Cherry-pick conflict! Manual resolution needed."
-        echo "Files with conflicts:"
-        git diff --name-only --diff-filter=U
+if [ "$UPSTREAM_SHA" = "$OUR_BASE" ]; then
+    echo "Already up to date with upstream."
+elif [ "$HEAD_SHA" = "$UPSTREAM_SHA" ]; then
+    echo "ERROR: HEAD matches upstream — our patches are missing!"
+    echo "Run: git reset --hard ORIG_HEAD  (if available)"
+    exit 1
+else
+    echo "Rebasing our patches onto latest upstream..."
+    # Stash any unstaged changes first
+    git stash push -m "sync-upstream-$(date +%s)" 2>/dev/null || true
+    if GIT_EDITOR=true git rebase "$UPSTREAM/main"; then
+        echo "Rebase succeeded."
+    else
+        echo "Rebase conflict! Manual resolution needed."
+        echo "Resolve conflicts, then: git rebase --continue"
+        echo "To abort: git rebase --abort"
         exit 1
-    }
+    fi
+    git stash pop 2>/dev/null || true
 fi
 
 echo "Pushing to fork..."
