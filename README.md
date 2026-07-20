@@ -17,15 +17,41 @@ This is a **thin fork** of [zed-industries/zed](https://github.com/zed-industrie
 
 ### What’s different
 
-| | Area | Patch | Why | Files |
-|-|------|-------|-----|-------|
-| 🐛 | **Agent** | **Gemini `const` schema sanitizer** | Google's Gemini API rejects `const` in `function_declarations.parameters`. Strips `const`, collapses `anyOf`-with-const → `enum`, drops `if/then/else` before constructing `FunctionDeclaration`. | `crates/google_ai/src/completion.rs` |
-| 🐛 | **Agent** | **Tool arg normalizer** | Models emit OpenAI/Anthropic field names (`working_directory`→`cd`, `file_path`→`path`, `query`→`regex`, `content`→`edits`). Maps aliases per tool, coerces string→u64 for `timeout_ms`. Eliminates `thread.rs:1635` validation errors. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
-| 🐛 | **Agent** | **Terminal `cd` default** | Models that omit `cd` hit deserialization error. `#[serde(default)]` so `.` is used when absent. | `crates/agent/src/tools/terminal_tool.rs` |
-| 🔍 | **Search** | **Grep respects `.ignore`** | Multi-GB JSONL/trajectory dirs OOM'd upstream grep. Patterns from `.ignore` merged into exclusion matcher. | `crates/agent/src/tools/grep_tool.rs` |
-| 🔍 | **Search** | **ast-grep dev helpers** | Shell wrapper for regex+structural search; `--help` to JSON schema parser. | `scripts/` |
-| ⚙️ | **Build** | **sccache + mold** | Default `rustc-wrapper = sccache`, links with `-fuse-ld=mold`. Cached build script for fast release rebuilds. | `.cargo/config.toml`, `script/build-release-cached` |
-| 🔄 | **Sync** | **`sync-upstream.sh`** | Rebases patches onto latest `origin/main` and force-pushes `fork`. | `sync-upstream.sh` |
+Patches are grouped by surface area. Every patch is upstream-bound — they just haven't landed in `zed-industries/zed` yet.
+
+#### 🤖 Agent — language model providers
+
+| Provider | Wire format | Why it exists |
+|----------|-------------|---------------|
+| **`nvidia`** | Full JSON Schema · `interleaved_reasoning` (msg-level `reasoning_content` round-trip) · no `prompt_cache_key` | First-class NVIDIA NIM (Inkling) route. The generic `openai_compatible` path sends `JsonSchemaSubset`, which collapses `type:["string","null"]` / `oneOf` and makes vLLM/Outlines **500** ("Could not translate instance to regex") on large MCP tool sets → Zed retries forever. `interleaved_reasoning` here populates the Assistant message's `reasoning_content` field (proven accepted by Inkling), so prior thinking survives multi-turn — it is NOT a top-level request param. |
+| **`openai-mcpproxy`** | Full JSON Schema · `interleaved_reasoning` · self-healing mapper | OpenAI-compatible endpoint fronted by an mcpproxy compact router. Same hardening as `nvidia` + recovers malformed tool-call args as `{}` instead of looping. |
+| **`openai-mcpproxy-nvidia`** | Full JSON Schema · `interleaved_reasoning` · NVIDIA identity | Inkling reached through a third-party OpenAI-compatible gateway (e.g. OpenRouter→Inkling). Avoids the same subset-500 loop on non-NVIDIA routes. |
+
+All three share a **non-destructive tool-schema normalizer** (repairs missing root `type`, untyped properties, bare `null` in multi-type arrays — no tool-count cap, no description truncation) and a **self-healing event mapper** that turns a malformed tool-call parse error into a valid `ToolUse` with `{}` input. This is what breaks the infinite retry loop on 120+ tool sets via `mcpproxy-sovereign`.
+
+*Files:* `crates/language_models/src/provider/{nvidia,openai_mcpproxy,openai_mcpproxy_nvidia}.rs`, `crates/nvidia/`
+
+#### 🤖 Agent — tool-call reliability
+
+| Patch | Why | Files |
+|-------|-----|-------|
+| **Gemini `const` schema sanitizer** | Gemini rejects `const` in `function_declarations.parameters`. Strips `const`, collapses `anyOf`-with-const → `enum`, drops `if/then/else`. | `crates/google_ai/src/completion.rs` |
+| **Tool arg normalizer** | Models emit OpenAI/Anthropic field names (`working_directory`→`cd`, `file_path`→`path`, `query`→`regex`, `content`→`edits`); coerces string→u64 for `timeout_ms`. Kills `thread.rs:1635` validation errors. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
+| **Terminal `cd` default** | Models that omit `cd` hit a deserialization error; `#[serde(default)]` falls back to `.`. | `crates/agent/src/tools/terminal_tool.rs` |
+
+#### 🔍 Search
+
+| Patch | Why | Files |
+|-------|-----|-------|
+| **Grep respects `.ignore`** | Multi-GB JSONL/trajectory dirs OOM'd upstream grep; `.ignore` patterns merged into the exclusion matcher. | `crates/agent/src/tools/grep_tool.rs` |
+| **ast-grep dev helpers** | Shell wrapper for regex + structural search; `--help` → JSON-schema parser. | `scripts/` |
+
+#### ⚙️ Build & 🔄 Sync
+
+| Area | Patch | Why | Files |
+|------|-------|-----|-------|
+| **Build** | **sccache + mold** | Default `rustc-wrapper = sccache`, links with `-fuse-ld=mold`; cached build script for fast release rebuilds. | `.cargo/config.toml`, `script/build-release-cached` |
+| **Sync** | **`sync-upstream.sh`** | Rebases patches onto latest `origin/main` and force-pushes `fork`. | `sync-upstream.sh` |
 
 ### What’s *not* in this fork
 

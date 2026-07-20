@@ -9906,6 +9906,7 @@ dependencies = [
  "log",
  "menu",
  "mistral",
+ "nvidia",
  "oauth_callback_server",
  "ollama",
  "open_ai",
@@ -11932,6 +11933,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5c7398b9c8b70908f6371f47ed36737907c87c52af34c268fed0bf0ceb92ead9"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "nvidia"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "schemars 1.0.4",
+ "serde",
+ "strum 0.27.2",
 ]
 
 [[package]]

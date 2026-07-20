@@ -24,7 +24,10 @@ pub struct AllLanguageModelSettingsContent {
     pub open_router: Option<OpenRouterSettingsContent>,
     pub openai: Option<OpenAiSettingsContent>,
     pub openai_compatible: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
+    pub openai_mcpproxy: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
+    pub openai_mcpproxy_nvidia: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
     pub vercel_ai_gateway: Option<VercelAiGatewaySettingsContent>,
+    pub nvidia: Option<NvidiaSettingsContent>,
     pub x_ai: Option<XAiSettingsContent>,
     #[serde(rename = "zed.dev")]
     pub zed_dot_dev: Option<ZedDotDevSettingsContent>,
@@ -398,11 +401,62 @@ pub struct OpenAiAvailableModel {
 }
 
 pub use language_model_core::ReasoningEffort as OpenAiReasoningEffort;
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct NvidiaAvailableModel {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub max_tokens: u64,
+    pub max_output_tokens: Option<u64>,
+    pub max_completion_tokens: Option<u64>,
+    pub reasoning_effort: Option<OpenAiReasoningEffort>,
+    pub supports_images: Option<bool>,
+    pub supports_tools: Option<bool>,
+    pub parallel_tool_calls: Option<bool>,
+}
+
+
 
 impl MergeFrom for OpenAiReasoningEffort {
     fn merge_from(&mut self, other: &Self) {
         *self = *other;
     }
+}
+
+impl From<OpenAiCompatibleSettingsContent> for OpenAiMcpProxySettingsContent {
+    fn from(c: OpenAiCompatibleSettingsContent) -> Self {
+        Self {
+            api_url: c.api_url,
+            available_models: c.available_models,
+            custom_headers: c.custom_headers,
+        }
+    }
+}
+
+impl From<OpenAiCompatibleSettingsContent> for OpenAiMcpProxyNvidiaSettingsContent {
+    fn from(c: OpenAiCompatibleSettingsContent) -> Self {
+        Self {
+            api_url: c.api_url,
+            available_models: c.available_models,
+            custom_headers: c.custom_headers,
+        }
+    }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct OpenAiMcpProxySettingsContent {
+    pub api_url: String,
+    pub available_models: Vec<OpenAiCompatibleAvailableModel>,
+    pub custom_headers: Option<HashMap<String, String>>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct OpenAiMcpProxyNvidiaSettingsContent {
+    pub api_url: String,
+    pub available_models: Vec<OpenAiCompatibleAvailableModel>,
+    pub custom_headers: Option<HashMap<String, String>>,
 }
 
 #[with_fallible_options]
@@ -533,6 +587,43 @@ pub struct XaiAvailableModel {
 
 #[with_fallible_options]
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct NvidiaSettingsContent {
+    pub api_url: Option<String>,
+    pub available_models: Option<Vec<NvidiaAvailableModelContent>>,
+    pub custom_headers: Option<HashMap<String, String>>,
+}
+
+impl From<NvidiaAvailableModelContent> for NvidiaAvailableModel {
+    fn from(c: NvidiaAvailableModelContent) -> Self {
+        Self {
+            name: c.name,
+            display_name: c.display_name,
+            max_tokens: c.max_tokens,
+            max_output_tokens: c.max_output_tokens,
+            max_completion_tokens: c.max_completion_tokens,
+            reasoning_effort: c.reasoning_effort,
+            supports_images: c.supports_images,
+            supports_tools: c.supports_tools,
+            parallel_tool_calls: c.parallel_tool_calls,
+        }
+    }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct NvidiaAvailableModelContent {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub max_tokens: u64,
+    pub max_output_tokens: Option<u64>,
+    pub max_completion_tokens: Option<u64>,
+    pub reasoning_effort: Option<OpenAiReasoningEffort>,
+    pub supports_images: Option<bool>,
+    pub supports_tools: Option<bool>,
+    pub parallel_tool_calls: Option<bool>,
+}
+#[with_fallible_options]
+#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
 pub struct ZedDotDevSettingsContent {
     pub available_models: Option<Vec<ZedDotDevAvailableModel>>,
 }

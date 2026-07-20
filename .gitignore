@@ -61,3 +61,7 @@ crates/docs_preprocessor/actions.json
 
 .local*
 u64
+
+# agent/cache artifacts
+.project_map.json
+.scout-cache/

@@ -27,6 +27,7 @@ pub enum IconName {
     AiOpenRouter,
     AiVercel,
     AiXAi,
+    AiNvidia,
     AiZed,
     Archive,
     ArrowCircle,

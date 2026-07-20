@@ -23,9 +23,12 @@ use crate::provider::google::GoogleLanguageModelProvider;
 use crate::provider::llama_cpp::LlamaCppLanguageModelProvider;
 use crate::provider::lmstudio::LmStudioLanguageModelProvider;
 pub use crate::provider::mistral::MistralLanguageModelProvider;
+use crate::provider::nvidia::NvidiaLanguageModelProvider;
 use crate::provider::ollama::OllamaLanguageModelProvider;
 use crate::provider::open_ai::OpenAiLanguageModelProvider;
 use crate::provider::open_ai_compatible::OpenAiCompatibleLanguageModelProvider;
+use crate::provider::openai_mcpproxy::OpenAiMcpProxyLanguageModelProvider;
+use crate::provider::openai_mcpproxy_nvidia::OpenAiMcpProxyNvidiaLanguageModelProvider;
 use crate::provider::open_router::OpenRouterLanguageModelProvider;
 use crate::provider::openai_subscribed::OpenAiSubscribedProvider;
 use crate::provider::opencode::OpenCodeLanguageModelProvider;
@@ -145,6 +148,8 @@ struct CompatibleProviders(HashMap<Arc<str>, CompatibleProviderKind>);
 enum CompatibleProviderKind {
     OpenAi,
     Anthropic,
+    OpenAiMcpProxy,
+    OpenAiMcpProxyNvidia,
 }
 
 impl CompatibleProviders {
@@ -155,6 +160,12 @@ impl CompatibleProviders {
             .keys()
             .map(|id| (id.clone(), CompatibleProviderKind::OpenAi))
             .collect();
+        for id in settings.openai_mcpproxy.keys() {
+            providers.insert(id.clone(), CompatibleProviderKind::OpenAiMcpProxy);
+        }
+        for id in settings.openai_mcpproxy_nvidia.keys() {
+            providers.insert(id.clone(), CompatibleProviderKind::OpenAiMcpProxyNvidia);
+        }
         for id in settings.anthropic_compatible.keys() {
             // The registry has a single provider ID namespace, so a name can
             // only refer to one provider. OpenAI-compatible entries win
@@ -201,6 +212,24 @@ fn register_compatible_providers(
                 ),
                 CompatibleProviderKind::Anthropic => registry.register_provider(
                     Arc::new(AnthropicCompatibleLanguageModelProvider::new(
+                        provider_id.clone(),
+                        client.http_client(),
+                        credentials_provider.clone(),
+                        cx,
+                    )),
+                    cx,
+                ),
+                CompatibleProviderKind::OpenAiMcpProxy => registry.register_provider(
+                    Arc::new(OpenAiMcpProxyLanguageModelProvider::new(
+                        provider_id.clone(),
+                        client.http_client(),
+                        credentials_provider.clone(),
+                        cx,
+                    )),
+                    cx,
+                ),
+                CompatibleProviderKind::OpenAiMcpProxyNvidia => registry.register_provider(
+                    Arc::new(OpenAiMcpProxyNvidiaLanguageModelProvider::new(
                         provider_id.clone(),
                         client.http_client(),
                         credentials_provider.clone(),
@@ -290,6 +319,14 @@ fn register_language_model_providers(
             credentials_provider.clone(),
             cx,
         ),
+        cx,
+    );
+    registry.register_provider(
+        Arc::new(NvidiaLanguageModelProvider::new(
+            client.http_client(),
+            credentials_provider.clone(),
+            cx,
+        )),
         cx,
     );
     registry.register_provider(

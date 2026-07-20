@@ -10,6 +10,9 @@ use crate::provider::{
     mistral::MistralSettings, ollama::OllamaSettings, open_ai::OpenAiSettings,
     open_ai_compatible::OpenAiCompatibleSettings, open_router, open_router::OpenRouterSettings,
     opencode, opencode::OpenCodeSettings, resolve_custom_headers,
+    nvidia::NvidiaSettings,
+    openai_mcpproxy::OpenAiMcpProxySettings,
+    openai_mcpproxy_nvidia::OpenAiMcpProxyNvidiaSettings,
     vercel_ai_gateway::VercelAiGatewaySettings, x_ai::XAiSettings,
 };
 
@@ -28,7 +31,10 @@ pub struct AllLanguageModelSettings {
     pub open_router: OpenRouterSettings,
     pub openai: OpenAiSettings,
     pub openai_compatible: HashMap<Arc<str>, OpenAiCompatibleSettings>,
+    pub openai_mcpproxy: HashMap<Arc<str>, OpenAiMcpProxySettings>,
+    pub openai_mcpproxy_nvidia: HashMap<Arc<str>, OpenAiMcpProxyNvidiaSettings>,
     pub vercel_ai_gateway: VercelAiGatewaySettings,
+    pub nvidia: NvidiaSettings,
     pub x_ai: XAiSettings,
     pub zed_dot_dev: ZedDotDevSettings,
 }
@@ -63,6 +69,9 @@ impl settings::Settings for AllLanguageModelSettings {
         let openai = language_models.openai.unwrap();
         let openai_compatible = language_models.openai_compatible.unwrap();
         let vercel_ai_gateway = language_models.vercel_ai_gateway.unwrap();
+        let nvidia = language_models.nvidia.unwrap();
+        let openai_mcpproxy = language_models.openai_mcpproxy;
+        let openai_mcpproxy_nvidia = language_models.openai_mcpproxy_nvidia;
         let x_ai = language_models.x_ai.unwrap();
         let zed_dot_dev = language_models.zed_dot_dev.unwrap();
         Self {
@@ -201,6 +210,54 @@ impl settings::Settings for AllLanguageModelSettings {
                     &[],
                 ),
             },
+            nvidia: NvidiaSettings {
+                api_url: nvidia.api_url.unwrap(),
+                available_models: nvidia
+                    .available_models
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(Into::into)
+                    .collect(),
+                custom_headers: custom_headers_from("NVIDIA", nvidia.custom_headers, &[]),
+            },
+            openai_mcpproxy: openai_mcpproxy
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(key, value)| {
+                    let provider_label = format!("OpenAI MCP-Proxy ({key})");
+                    (
+                        key,
+                        OpenAiMcpProxySettings {
+                            api_url: value.api_url,
+                            available_models: value.available_models,
+                            custom_headers: custom_headers_from(
+                                &provider_label,
+                                value.custom_headers,
+                                &[],
+                            ),
+                        },
+                    )
+                })
+                .collect(),
+            openai_mcpproxy_nvidia: openai_mcpproxy_nvidia
+                .unwrap_or_default()
+                .into_iter()
+                .map(|(key, value)| {
+                    let provider_label = format!("OpenAI MCP-Proxy NVIDIA ({key})");
+                    (
+                        key,
+                        OpenAiMcpProxyNvidiaSettings {
+                            api_url: value.api_url,
+                            available_models: value.available_models,
+                            custom_headers: custom_headers_from(
+                                &provider_label,
+                                value.custom_headers,
+                                &[],
+                            ),
+                        },
+                    )
+                })
+                .collect(),
             x_ai: XAiSettings {
                 api_url: x_ai.api_url.unwrap(),
                 available_models: x_ai.available_models.unwrap_or_default(),
