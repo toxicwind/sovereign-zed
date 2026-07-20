@@ -597,6 +597,7 @@ async fn list_models(
                 chat_completions: true,
                 interleaved_reasoning: false,
                 max_tokens_parameter: false,
+                autonomous_edits: true,
             },
         });
     }

@@ -285,7 +285,7 @@ pub struct OpenCodeAvailableModel {
     pub subscription: Option<OpenCodeModelSubscription>,
     /// Custom Model API URL to use for this model.
     pub custom_model_api_url: Option<String>,
-    /// Supported reasoning effort levels, for example `["low", "medium", "high"].
+    /// Supported reasoning effort levels, for example `["low", "medium", "high"]`.
     pub reasoning_effort_levels: Option<Vec<ReasoningEffort>>,
     /// When using OpenAiChat protocol, whether thinking tokens are sent as a dedicated `reasoning_content` field or inline in message text.
     #[serde(default)]
@@ -380,7 +380,7 @@ pub struct MistralAvailableModel {
 }
 
 #[with_fallible_options]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
 pub struct OpenAiSettingsContent {
     pub api_url: Option<String>,
     pub available_models: Option<Vec<OpenAiAvailableModel>>,
@@ -511,6 +511,18 @@ pub struct OpenAiCompatibleModelCapabilities {
     pub interleaved_reasoning: bool,
     #[serde(default)]
     pub max_tokens_parameter: bool,
+    /// Whether this model is permitted to make autonomous, state-mutating
+    /// changes (writing/editing files, running terminal commands, moving or
+    /// deleting paths). When `false`, the agent's permission system denies any
+    /// mutating tool call for this model regardless of the user's `tool_permissions`
+    /// settings.
+    ///
+    /// This is a *credible commitment device*: it enforces least privilege at the
+    /// tool-dispatch boundary instead of relying on a prompt asking the model to
+    /// behave. Untrusted or free providers can be pinned to read-only operation so
+    /// a misaligned or reward-hacking model cannot expand its own action space.
+    #[serde(default = "default_true")]
+    pub autonomous_edits: bool,
 }
 
 impl Default for OpenAiCompatibleModelCapabilities {
@@ -523,6 +535,7 @@ impl Default for OpenAiCompatibleModelCapabilities {
             chat_completions: default_true(),
             interleaved_reasoning: false,
             max_tokens_parameter: false,
+            autonomous_edits: default_true(),
         }
     }
 }
@@ -623,7 +636,7 @@ pub struct NvidiaAvailableModelContent {
     pub parallel_tool_calls: Option<bool>,
 }
 #[with_fallible_options]
-#[derive(Default, Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
 pub struct ZedDotDevSettingsContent {
     pub available_models: Option<Vec<ZedDotDevAvailableModel>>,
 }
