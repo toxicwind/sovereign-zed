@@ -24,7 +24,8 @@ This tree is a **thin fork**. Everything below is **local-only** relative to `or
 | **Tool arg normalizer** | Models emit OpenAI/Anthropic-style field names (`working_directory`, `file_path`, `query`, `content`) but Zed expects `cd`, `path`, `regex`, `edits`. Maps common aliases per tool and coerces string->u64 for `timeout_ms`. Eliminates `thread.rs:1635 missing field` validation errors across terminal, edit_file, write_file, and grep tools. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
 | **Terminal `cd` default** | Models that omit `cd` from terminal calls hit a deserialization error. Adds `#[serde(default)]` so `.` is used when absent. | `crates/agent/src/tools/terminal_tool.rs` |
 | **Release build: sccache + mold** | Full Zed release rebuilds are brutal on this machine. Default `rustc-wrapper = sccache`, x86_64-linux links with **mold**, `script/build-release-cached` for agent/install paths. **Not** an editor behavior change. | `.cargo/config.toml`, `script/build-release-cached` |
-| **`sync-upstream.sh`** | Rebase/cherry-pick our agent patch onto latest `origin/main` and force-push `private`. | `sync-upstream.sh` |
+| **ast-grep dev helpers** | `ast-grep-helper.sh` wraps structural search with regex pre-filtering; `ast-grep-help-json.py` parses `ast-grep --help` into JSON schema. Speeds up agent-side code search pattern development. | `scripts/ast-grep-helper.sh`, `scripts/ast-grep-help-json.py` |
+| **`sync-upstream.sh`** | Rebase local patches onto latest upstream and force-push `fork`. | `sync-upstream.sh` |
 
 ### What is *not* forked here
 
