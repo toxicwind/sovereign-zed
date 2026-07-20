@@ -1288,6 +1288,27 @@ pub struct Thread {
     sandbox_grants: Rc<RefCell<ThreadSandboxGrants>>,
 }
 
+
+/// Tools that perform state-mutating, autonomous changes (filesystem writes, edits,
+/// deletions, moves, terminal execution). A model whose capabilities disable
+/// `autonomous_edits` is denied any of these regardless of the user's
+/// `tool_permissions` settings — this is a hard, credible-commitment boundary,
+/// not a prompt-level request.
+fn is_mutating_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "write_file"
+            | "edit_file"
+            | "delete_path"
+            | "move_path"
+            | "rename_symbol"
+            | "create_directory"
+            | "copy_path"
+            | "terminal"
+            | "apply_code_action"
+    )
+}
+
 impl Thread {
     fn prompt_capabilities(model: Option<&dyn LanguageModel>) -> acp::PromptCapabilities {
         let image = model.map_or(true, |model| model.supports_images());
@@ -5731,27 +5752,6 @@ impl ToolCallEventStream {
     /// For authorizations that must always prompt regardless of settings
     /// (e.g. symlink-escape confirmations, sensitive settings-file edits),
     /// use [`Self::prompt`] instead.
-
-/// Tools that perform state-mutating, autonomous changes (filesystem writes, edits,
-/// deletions, moves, terminal execution). A model whose capabilities disable
-/// `autonomous_edits` is denied any of these regardless of the user's
-/// `tool_permissions` settings — this is a hard, credible-commitment boundary,
-/// not a prompt-level request.
-fn is_mutating_tool(tool_name: &str) -> bool {
-    matches!(
-        tool_name,
-        "write_file"
-            | "edit_file"
-            | "delete_path"
-            | "move_path"
-            | "rename_symbol"
-            | "create_directory"
-            | "copy_path"
-            | "terminal"
-            | "apply_code_action"
-    )
-}
-
     pub fn authorize(
         &self,
         title: impl Into<String>,
@@ -5763,6 +5763,9 @@ fn is_mutating_tool(tool_name: &str) -> bool {
 
         let tool_name = context.tool_name.clone();
         let input_values = context.input_values.clone();
+        // `WeakEntity` is `Copy`; capture a copy so the permission closure is
+        // `'static` and can resolve the active model without borrowing `self`.
+        let thread = self.thread.clone();
         let check_settings: Box<dyn Fn(&App) -> ToolPermissionDecision> =
             Box::new(move |cx: &App| {
                 // Hard boundary: a model without the `autonomous_edits` capability
@@ -5772,10 +5775,14 @@ fn is_mutating_tool(tool_name: &str) -> bool {
                 // preventing an untrusted/low-trust model from expanding its own
                 // action space.
                 if is_mutating_tool(&tool_name)
-                    && !self
-                        .model
-                        .as_model()
-                        .map_or(true, |m| m.supports_autonomous_edits())
+                    && !thread
+                        .as_ref()
+                        .and_then(|t| t.upgrade())
+                        .map_or(true, |thread| {
+                            thread.read(cx).model.as_model().map_or(true, |m| {
+                                m.supports_autonomous_edits()
+                            })
+                        })
                 {
                     return ToolPermissionDecision::Deny(
                         "This model is configured without autonomous edit permission                          (capabilities.autonomous_edits = false). Mutating tools are disabled."
