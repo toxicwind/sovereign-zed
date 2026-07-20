@@ -39,6 +39,96 @@ use serde::{
     de::{DeserializeOwned, Error as _},
 };
 
+/// Normalize tool call arguments emitted by various model families so they
+/// match Zed's native tool schemas.
+///
+/// Different model providers train on different tool schemas (OpenAI,
+/// Anthropic, Google, etc.). This function maps common patterns to Zed's
+/// expected format before deserialization, preventing `missing field`
+/// and `unknown field` errors across all tools in one place.
+pub(crate) fn normalize_tool_args(
+    tool_name: &str,
+    mut value: serde_json::Value,
+) -> serde_json::Value {
+    let Some(obj) = value.as_object_mut() else {
+        return value;
+    };
+
+    // --- Generic: strip OpenAI-style wrapper if present ---
+    // Some models emit {"type":"function","function":{"name":"X","arguments":"{...}"}}
+    // instead of flat {"command":"ls","cd":"."}. This is already handled upstream,
+    // but if a stray "type" field leaks through, drop it.
+    if obj.len() > 1 {
+        obj.remove("type");
+    }
+
+    // --- Terminal tools: map common field names to Zed's `cd` ---
+    if tool_name == "terminal" || tool_name == "sandboxed_terminal" {
+        let wd = obj
+            .remove("working_directory")
+            .or_else(|| obj.remove("cwd"))
+            .or_else(|| obj.remove("directory"));
+        if let Some(wd) = wd {
+            obj.entry("cd").or_insert(wd);
+        }
+        obj.entry("cd").or_insert(".".into());
+        // timeout as string → u64
+        if let Some(serde_json::Value::String(s)) = obj.get("timeout_ms") {
+            if let Ok(n) = s.parse::<u64>() {
+                obj.insert("timeout_ms".into(), serde_json::Value::Number(n.into()));
+            }
+        }
+    }
+
+    // --- edit_file: map common field names ---
+    if tool_name == "edit_file" {
+        if let Some(p) = obj.remove("file_path").or_else(|| obj.remove("filePath")) {
+            obj.entry("path").or_insert(p);
+        }
+        if let Some(e) = obj.remove("changes").or_else(|| obj.remove("replacements")) {
+            obj.entry("edits").or_insert(e);
+        }
+        if let Some(c) = obj.remove("content") {
+            obj.entry("edits").or_insert_with(|| {
+                serde_json::json!([{"old_text":"","new_text":c}])
+            });
+        }
+    }
+
+    // --- write_file: map common field names ---
+    if tool_name == "write_file" {
+        if let Some(p) = obj.remove("file_path").or_else(|| obj.remove("filePath")) {
+            obj.entry("path").or_insert(p);
+        }
+    }
+
+    // --- grep: map common field names ---
+    if tool_name == "grep" {
+        if let Some(p) = obj.remove("pattern").or_else(|| obj.remove("query")) {
+            obj.entry("regex").or_insert(p);
+        }
+        if let Some(f) = obj.remove("file_pattern").or_else(|| obj.remove("glob")) {
+            obj.entry("include_pattern").or_insert(f);
+        }
+        // timeout as string → u64
+        if let Some(serde_json::Value::String(s)) = obj.get("timeout") {
+            if let Ok(n) = s.parse::<u64>() {
+                obj.insert("timeout_ms".into(), serde_json::Value::Number(n.into()));
+                obj.remove("timeout");
+            }
+        }
+    }
+
+    // --- list_directory ---
+    if tool_name == "list_directory" {
+        if let Some(p) = obj.remove("path").or_else(|| obj.remove("directory")) {
+            obj.entry("path").or_insert(p);
+        }
+    }
+
+    value
+}
+
 /// Deserialize a value that may have been provided as a JSON-encoded string
 /// instead of the structured value. Some models occasionally stringify nested
 /// arguments, so we accept either form.

@@ -17,6 +17,55 @@ use crate::{
     ToolConfig, UsageMetadata,
 };
 
+/// Strip JSON Schema keywords unsupported by Google's Gemini API.
+///
+/// Gemini rejects `const`, and `anyOf` containing `const`, inside
+/// `function_declarations.parameters`. This walks the schema tree and:
+///   1. Removes bare `"const": ...` keys.
+///   2. Converts `{ "anyOf": [ {"const": "A"}, {"const": "B"} ] }`
+///      into `{ "enum": ["A", "B"] }`.
+///   3. Drops `if`/`then`/`else` keywords (also unsupported).
+fn sanitize_google_schema(mut schema: serde_json::Value) -> serde_json::Value {
+    fn strip(v: &mut serde_json::Value) {
+        match v {
+            serde_json::Value::Object(map) => {
+                // If this object is { "anyOf": [...] } and every variant is { "const": X },
+                // collapse to { "enum": [...] }.
+                if let Some(serde_json::Value::Array(variants)) = map.get("anyOf") {
+                    if !variants.is_empty()
+                        && variants.iter().all(|v| {
+                            matches!(v, serde_json::Value::Object(m)
+                                if m.len() == 1 && m.contains_key("const"))
+                        })
+                    {
+                        let enums: Vec<serde_json::Value> = variants
+                            .iter()
+                            .filter_map(|v| v.get("const").cloned())
+                            .collect();
+                        map.remove("anyOf");
+                        map.insert("enum".into(), serde_json::Value::Array(enums));
+                    }
+                }
+                map.remove("const");
+                map.remove("if");
+                map.remove("then");
+                map.remove("else");
+                for (_, child) in map.iter_mut() {
+                    strip(child);
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for item in arr.iter_mut() {
+                    strip(item);
+                }
+            }
+            _ => {}
+        }
+    }
+    strip(&mut schema);
+    schema
+}
+
 pub fn into_google(
     mut request: LanguageModelRequest,
     model_id: String,
@@ -139,7 +188,7 @@ pub fn into_google(
                         Ok(FunctionDeclaration {
                             name: tool.name,
                             description: tool.description,
-                            parameters: input_schema,
+                            parameters: sanitize_google_schema(input_schema),
                         })
                     }
                     LanguageModelRequestToolInput::Custom { .. } => {
