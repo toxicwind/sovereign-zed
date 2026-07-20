@@ -7,37 +7,35 @@ Welcome to Zed, a high-performance, multiplayer code editor from the creators of
 
 ---
 
-## toxicwind fork ([toxicwind/zed](https://github.com/toxicwind/zed))
 
-Upstream: [zed-industries/zed](https://github.com/zed-industries/zed).  
-Private mirror: `toxicwind/zed-source` (`private` remote). Sync helper: `./sync-upstream.sh`.
 
-This tree is a **thin fork**. Everything below is **local-only** relative to `origin/main` (zed-industries). Keep these when rebasing.
+## 🔱 toxicwind/zed
 
-### What we added (and why)
+*Last synced with upstream: **Jul 20, 2026** — [diff](https://github.com/toxicwind/zed/compare/main...zed-industries:zed:main)*
 
-| Change | Why | Files |
-|--------|-----|--------|
-| **Agent grep respects `.ignore`** | Host trees contain multi‑GB JSONL / trajectories. Upstream grep only used gitignore-like defaults and **OOM'd** the agent on sovereign / antigravity dumps. Patterns from each worktree's `.ignore` are merged into the exclusion matcher. | `crates/agent/src/tools/grep_tool.rs` |
-| **Tests for `.ignore` + path helpers** | Guard the above; `extract_paths_from_results` reused outside tests. | same |
-| **Gemini `const` schema sanitizer** | Zed sends JSON Schema with `const` keyword; Google's Gemini API rejects it with `Unknown name "const"`. Strips `const`, collapses `anyOf`-with-const -> `enum`, drops `if/then/else` before constructing `FunctionDeclaration`. Prevents tool-call failures on all Gemini models. | `crates/google_ai/src/completion.rs` |
-| **Tool arg normalizer** | Models emit OpenAI/Anthropic-style field names (`working_directory`, `file_path`, `query`, `content`) but Zed expects `cd`, `path`, `regex`, `edits`. Maps common aliases per tool and coerces string->u64 for `timeout_ms`. Eliminates `thread.rs:1635 missing field` validation errors across terminal, edit_file, write_file, and grep tools. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
-| **Terminal `cd` default** | Models that omit `cd` from terminal calls hit a deserialization error. Adds `#[serde(default)]` so `.` is used when absent. | `crates/agent/src/tools/terminal_tool.rs` |
-| **Release build: sccache + mold** | Full Zed release rebuilds are brutal on this machine. Default `rustc-wrapper = sccache`, x86_64-linux links with **mold**, `script/build-release-cached` for agent/install paths. **Not** an editor behavior change. | `.cargo/config.toml`, `script/build-release-cached` |
-| **ast-grep dev helpers** | `ast-grep-helper.sh` wraps structural search with regex pre-filtering; `ast-grep-help-json.py` parses `ast-grep --help` into JSON schema. Speeds up agent-side code search pattern development. | `scripts/ast-grep-helper.sh`, `scripts/ast-grep-help-json.py` |
-| **`sync-upstream.sh`** | Rebase local patches onto latest upstream and force-push `fork`. | `sync-upstream.sh` |
+This is a **thin fork** of [zed-industries/zed](https://github.com/zed-industries/zed) with patches focused on agent reliability, code search, and build toolchain. Every patch is meant for upstream — they just haven't gotten there yet.
 
-### What is *not* forked here
+### What’s different
 
-- Language-model endpoints, oaicopilot wiring, and `api_url: http://127.0.0.1:25100` live in **user settings** (`~/.config/zed/settings.json`) and sovereign deploy scripts — not in this git delta.
-- Inference is **llama-swap** (toxicwind fork) on **:25100**. There is no vLLM.
+| | Area | Patch | Why | Files |
+|-|------|-------|-----|-------|
+| 🐛 | **Agent** | **Gemini `const` schema sanitizer** | Google's Gemini API rejects `const` in `function_declarations.parameters`. Strips `const`, collapses `anyOf`-with-const → `enum`, drops `if/then/else` before constructing `FunctionDeclaration`. | `crates/google_ai/src/completion.rs` |
+| 🐛 | **Agent** | **Tool arg normalizer** | Models emit OpenAI/Anthropic field names (`working_directory`→`cd`, `file_path`→`path`, `query`→`regex`, `content`→`edits`). Maps aliases per tool, coerces string→u64 for `timeout_ms`. Eliminates `thread.rs:1635` validation errors. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
+| 🐛 | **Agent** | **Terminal `cd` default** | Models that omit `cd` hit deserialization error. `#[serde(default)]` so `.` is used when absent. | `crates/agent/src/tools/terminal_tool.rs` |
+| 🔍 | **Search** | **Grep respects `.ignore`** | Multi-GB JSONL/trajectory dirs OOM'd upstream grep. Patterns from `.ignore` merged into exclusion matcher. | `crates/agent/src/tools/grep_tool.rs` |
+| 🔍 | **Search** | **ast-grep dev helpers** | Shell wrapper for regex+structural search; `--help` to JSON schema parser. | `scripts/` |
+| ⚙️ | **Build** | **sccache + mold** | Default `rustc-wrapper = sccache`, links with `-fuse-ld=mold`. Cached build script for fast release rebuilds. | `.cargo/config.toml`, `script/build-release-cached` |
+| 🔄 | **Sync** | **`sync-upstream.sh`** | Rebases patches onto latest `origin/main` and force-pushes `fork`. | `sync-upstream.sh` |
 
-### Build (this host)
+### What’s *not* in this fork
+
+Language model endpoints, provider configs (OpenRouter, NVIDIA NIM, Google, Mistral, etc.), and API URLs all live in **user settings** (`~/.config/zed/settings.json`) and deploy scripts — not in this git delta. Inference runs on **[llama-swap](https://github.com/toxicwind/llama-swap-main)** (`:25100`). No vLLM.
+
+### Build
 
 ```bash
 cd /home/toxic/projects/zed
 ./script/build-release-cached
-# or: cargo build --release -p zed -p cli
 ```
 
 Requires `sccache` and `mold` on `PATH` (see `.cargo/config.toml`).
@@ -45,8 +43,8 @@ Requires `sccache` and `mold` on `PATH` (see `.cargo/config.toml`).
 ### Remotes
 
 ```text
-origin   https://github.com/zed-industries/zed.git  (upstream, read-only)
-fork     https://github.com/toxicwind/zed.git      (our patches, public)
+origin  https://github.com/zed-industries/zed.git   (upstream, read-only)
+fork    https://github.com/toxicwind/zed.git         (this repo)
 ```
 
 ---
