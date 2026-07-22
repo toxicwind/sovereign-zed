@@ -31,6 +31,29 @@ This is a **thin fork** of [zed-industries/zed](https://github.com/zed-industrie
 
 Language model endpoints, provider configs (OpenRouter, NVIDIA NIM, Google, Mistral, etc.), and API URLs all live in **user settings** (`~/.config/zed/settings.json`) and deploy scripts — not in this git delta. Inference runs on **[llama-swap](https://github.com/toxicwind/llama-swap-main)** (`:25100`). No vLLM.
 
+### What’s *new* in this fork
+
+#### 🔗 External Access — GHAS MCP Remote Configuration
+
+| Component | Purpose | Files |
+|-----------|---------|-------|
+| **`ghas-external-access`** | External access configuration for GHAS MCP server | `extensions/ghas-external-access/` |
+| **Context Server Configs** | Pre-configured remote access profiles (local, Tailscale, external) | `extensions/ghas-external-access/extension.toml` |
+| **Documentation** | Setup guides for secure remote access | `extensions/ghas-external-access/README.md` |
+
+**Why it exists:** The upstream Zed editor lacks built-in support for external MCP server access from mobile devices. This extension provides pre-configured context server profiles that integrate with:
+- **Tailscale** for secure VPN-based access
+- **Local development** for testing
+- **External IP** configurations for controlled remote access
+
+**Usage:**
+1. Ensure GHAS MCP is running: `pgrep -f ghas-mcp-stdio.sh`
+2. Add context server config to `~/.config/zed/settings.json`
+3. Connect via Tailscale or configure firewall rules
+4. Access Zed agent with full GHAS capabilities from any device
+
+**Security note:** Never expose MCP servers directly to the internet. Use Tailscale, WireGuard, or similar zero-trust networking.
+
 ### Build
 
 ```bash
