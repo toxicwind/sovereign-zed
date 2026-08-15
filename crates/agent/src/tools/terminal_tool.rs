@@ -1388,7 +1388,6 @@ fn process_content(
 /// Paths are validated with [`RelPath`] via [`PathStyle::strip_prefix`], to
 /// ensure that `cd` cannot escape the worktree root with a `..` sequence
 /// (#60014).
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
 fn resolve_cd_in_worktrees(
     cd: &str,
     path_style: util::paths::PathStyle,
@@ -1415,7 +1414,6 @@ fn resolve_cd_in_worktrees(
             root_name.as_ref()
         };
         let subpath = path_style.strip_prefix(cd_path, prefix)?;
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         if subpath.is_empty() {
             Some(abs_path.clone())
         } else {
@@ -1465,28 +1463,24 @@ mod tests {
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/src", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/src")),
             "an absolute path inside a worktree resolves to the same path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/elsewhere", Unix, &unix_roots),
             resolve_cd_in_worktrees("/elsewhere", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "an absolute path outside every worktree is rejected"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/src/../docs", Unix, &unix_roots),
             resolve_cd_in_worktrees("/a/worktree/src/../docs", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/docs")),
             "an absolute path that stays within its worktree via `..` resolves to the same path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/../escape", Unix, &unix_roots),
             resolve_cd_in_worktrees("/a/worktree/../escape", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "an absolute path that escapes its worktree via `..` is rejected"
         );
@@ -1502,35 +1496,30 @@ mod tests {
             resolve_cd_in_worktrees("/a/worktree/../../b/worktree", Unix, &posix_roots),
             None,
             "a `..` escape is rejected even when the final path lands in a different valid worktree"
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         );
 
         // relative root names
         assert_eq!(
             resolve_cd_in_worktrees("worktree", Unix, &unix_roots),
             resolve_cd_in_worktrees("worktree", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree")),
             "a root-relative path to a worktree root resolves to the first matching worktree"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/src", Unix, &unix_roots),
             resolve_cd_in_worktrees("worktree/src", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/src")),
             "a root-relative path to a subdirectory resolves to the absolute path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/src/../doc", Unix, &unix_roots),
             resolve_cd_in_worktrees("worktree/src/../doc", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/doc")),
             "a root-relative path to a subdirectory with `..` resolves to a clean absolute path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/../escape", Unix, &unix_roots),
             resolve_cd_in_worktrees("worktree/../escape", Unix, &posix_roots),
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "a root-relative path that escapes the worktree via `..` is rejected"
         );
@@ -1600,7 +1589,6 @@ mod tests {
             resolve_cd_in_worktrees("worktree\\src", Windows, &windows_roots),
             Some(PathBuf::from("C:/work/worktree\\src")),
             "Windows-relative paths to subdirectories resolve to the same path, with Windows path style"
->>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         );
     }
 
