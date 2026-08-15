@@ -46,7 +46,11 @@ const COMMAND_OUTPUT_LIMIT: u64 = 16 * 1024;
 /// - Always insert `--no-pager` immediately after `git` for any read-only git command, including `git log`, `git diff`, `git show`, `git blame`, and `git stash show`. Example: `git --no-pager log -n 5` (NOT `git log -n 5`).
 /// - Prefer Git flags that avoid optional metadata writes when possible, such as `git --no-optional-locks status` instead of `git status`.
 /// - Always prepend `GIT_EDITOR=true ` to any git command that may invoke an editor, including `git rebase`, `git commit`, `git merge`, and `git tag`. Example: `GIT_EDITOR=true git rebase origin/main` (NOT `git rebase origin/main`).
-/// - For other commands that may open a pager or editor, set `PAGER=cat` and/or `EDITOR=true` similarly.
+/// - For other commands that may open a pager or editor, set `PAGER=cat` and/or `EDITOR=true ` similarly.
+fn default_cd() -> String {
+    ".".to_string()
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, JsonSchema)]
 pub struct TerminalToolInput {
     /// The one-liner command to execute. Do not include shell substitutions or interpolations such as `$VAR`, `${VAR}`, `$(...)`, backticks, `$((...))`, `<(...)`, or `>(...)`; resolve those values first or ask the user for the literal value to use.
@@ -54,6 +58,9 @@ pub struct TerminalToolInput {
     /// REMINDER: read-only git commands (`git log`, `git diff`, `git show`, `git blame`) MUST include `--no-pager` (e.g. `git --no-pager log`). Prefer `git --no-optional-locks status` over `git status` to avoid optional metadata writes. Git commands that may open an editor (`git rebase`, `git commit`, `git merge`, `git tag`) MUST be prefixed with `GIT_EDITOR=true ` (e.g. `GIT_EDITOR=true git rebase origin/main`). Otherwise the terminal will hang.
     pub command: String,
     /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src` or `/home/user/my-project`.
+    /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    #[serde(default = "default_cd")]
     pub cd: String,
     /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
     pub timeout_ms: Option<u64>,
@@ -96,6 +103,9 @@ pub struct SandboxedTerminalToolInput {
     /// REMINDER: read-only git commands (`git log`, `git diff`, `git show`, `git blame`) MUST include `--no-pager` (e.g. `git --no-pager log`). Prefer `git --no-optional-locks status` over `git status` to avoid optional metadata writes. Git commands that may open an editor (`git rebase`, `git commit`, `git merge`, `git tag`) MUST be prefixed with `GIT_EDITOR=true ` (e.g. `GIT_EDITOR=true git rebase origin/main`). Otherwise the terminal will hang.
     pub command: String,
     /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src` or `/home/user/my-project`.
+    /// Working directory: a project root directory or any subdirectory of one, given by name or absolute path. E.g. `my-project/src`, `/home/user/my-project`, or on Windows `my-project\src` or `C:\Users\me\my-project`.
+    #[serde(default = "default_cd")]
     pub cd: String,
     /// Optional maximum runtime (in milliseconds). If exceeded, the running terminal task is killed.
     pub timeout_ms: Option<u64>,
@@ -1337,24 +1347,17 @@ fn process_content(
     };
     content
 }
+            .filter_map(|worktree| {
+                let worktree = worktree.read(cx);
+                // Skip single-file worktrees: a file can't be a working directory.
+                let root_dir = worktree.root_dir()?;
+                Some((worktree.root_name_str(), root_dir.to_path_buf()))
+        // Use project path style (not host Path::is_absolute) so remote/WSL
+        // absolute paths resolve correctly; allow subdirs of worktree roots
+        // and block `..` escapes (upstream PR #59937 / issues #60014 #60040 #60043).
+        let path_style = project.path_style(cx);
+        let worktree_roots = project
 
-fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Option<PathBuf>> {
-    let project = project.read(cx);
-
-    if cd == "." || cd.is_empty() {
-        let mut worktrees = project.worktrees(cx);
-
-        match worktrees.next() {
-            Some(worktree) => {
-                anyhow::ensure!(
-                    worktrees.next().is_none(),
-                    "'.' is ambiguous in multi-root workspaces. Please specify a root directory explicitly.",
-                );
-                Ok(Some(worktree.read(cx).abs_path().to_path_buf()))
-            }
-            None => Ok(None),
-        }
-    } else {
         let path_style = project.path_style(cx);
         let worktree_roots = project
             .worktrees(cx)
@@ -1363,13 +1366,7 @@ fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Opti
                 // Skip single-file worktrees: a file can't be a working directory.
                 let root_dir = worktree.root_dir()?;
                 Some((worktree.root_name_str(), root_dir.to_path_buf()))
-            })
-            .collect::<Vec<_>>();
-
-        if let Some(dir) = resolve_cd_in_worktrees(cd, path_style, &worktree_roots) {
-            return Ok(Some(dir));
-        }
-
+            }).collect::<Vec<_>>();
         anyhow::bail!("`cd` directory {cd:?} was not in any root directory in the project.");
     }
 }
@@ -1388,6 +1385,10 @@ fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Opti
 /// rejected (#60014). On Windows-style projects it also unifies `/` and `\`
 /// separators, since models frequently write `C:/foo/bar` for a root stored
 /// as `C:\foo\bar`.
+/// Paths are validated with [`RelPath`] via [`PathStyle::strip_prefix`], to
+/// ensure that `cd` cannot escape the worktree root with a `..` sequence
+/// (#60014).
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
 fn resolve_cd_in_worktrees(
     cd: &str,
     path_style: util::paths::PathStyle,
@@ -1404,6 +1405,17 @@ fn resolve_cd_in_worktrees(
             (*root_name).to_string()
         };
         let subpath = path_style.strip_prefix(cd_path, Path::new(&prefix))?;
+    let cd_path = Path::new(cd);
+    let is_absolute = path_style.is_absolute(cd);
+
+    worktree_roots.iter().find_map(|(root_name, abs_path)| {
+        let prefix: &Path = if is_absolute {
+            abs_path
+        } else {
+            root_name.as_ref()
+        };
+        let subpath = path_style.strip_prefix(cd_path, prefix)?;
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         if subpath.is_empty() {
             Some(abs_path.clone())
         } else {
@@ -1439,21 +1451,42 @@ mod tests {
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/src", Unix, &unix_roots),
+        let posix_roots: Vec<(&str, PathBuf)> = vec![
+            ("worktree", PathBuf::from("/a/worktree")),
+            ("worktree", PathBuf::from("/b/worktree")),
+        ];
+        let windows_roots = vec![("worktree", PathBuf::from("C:/work/worktree"))];
+
+        // absolute paths
+        assert_eq!(
+            resolve_cd_in_worktrees("/b/worktree", Unix, &posix_roots),
+            Some(PathBuf::from("/b/worktree")),
+            "a POSIX-absolute path resolves under a Unix project path style even on a Windows host"
+        );
+        assert_eq!(
+            resolve_cd_in_worktrees("/a/worktree/src", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/src")),
             "an absolute path inside a worktree resolves to the same path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/elsewhere", Unix, &unix_roots),
+            resolve_cd_in_worktrees("/elsewhere", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "an absolute path outside every worktree is rejected"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/src/../docs", Unix, &unix_roots),
+            resolve_cd_in_worktrees("/a/worktree/src/../docs", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/docs")),
             "an absolute path that stays within its worktree via `..` resolves to the same path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("/a/worktree/../escape", Unix, &unix_roots),
+            resolve_cd_in_worktrees("/a/worktree/../escape", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "an absolute path that escapes its worktree via `..` is rejected"
         );
@@ -1466,26 +1499,38 @@ mod tests {
             resolve_cd_in_worktrees("/a/worktree//src/", Unix, &unix_roots),
             Some(PathBuf::from("/a/worktree/src")),
             "doubled and trailing separators are normalized away"
+            resolve_cd_in_worktrees("/a/worktree/../../b/worktree", Unix, &posix_roots),
+            None,
+            "a `..` escape is rejected even when the final path lands in a different valid worktree"
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         );
 
         // relative root names
         assert_eq!(
             resolve_cd_in_worktrees("worktree", Unix, &unix_roots),
+            resolve_cd_in_worktrees("worktree", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree")),
             "a root-relative path to a worktree root resolves to the first matching worktree"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/src", Unix, &unix_roots),
+            resolve_cd_in_worktrees("worktree/src", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/src")),
             "a root-relative path to a subdirectory resolves to the absolute path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/src/../doc", Unix, &unix_roots),
+            resolve_cd_in_worktrees("worktree/src/../doc", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             Some(PathBuf::from("/a/worktree/doc")),
             "a root-relative path to a subdirectory with `..` resolves to a clean absolute path"
         );
         assert_eq!(
             resolve_cd_in_worktrees("worktree/../escape", Unix, &unix_roots),
+            resolve_cd_in_worktrees("worktree/../escape", Unix, &posix_roots),
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
             None,
             "a root-relative path that escapes the worktree via `..` is rejected"
         );
@@ -1535,6 +1580,27 @@ mod tests {
             resolve_cd_in_worktrees("C:\\work\\worktree\\..\\escape", Windows, &windows_roots),
             None,
             "a Windows-absolute path that escapes its worktree via `..` is rejected"
+            resolve_cd_in_worktrees("worktreeextra", Unix, &posix_roots),
+            None,
+            "a root-relative path that is not any of the worktree roots is rejected"
+        );
+
+        // Windows paths
+        assert_eq!(
+            resolve_cd_in_worktrees("C:/work/worktree", Windows, &windows_roots),
+            Some(PathBuf::from("C:/work/worktree")),
+            "Windows-absolute paths to root directories resolve"
+        );
+        assert_eq!(
+            resolve_cd_in_worktrees("C:/work/worktree/src", Windows, &windows_roots),
+            Some(PathBuf::from("C:/work/worktree\\src")),
+            "Windows-absolute paths to subdirectories resolve to the same path, with Windows path style"
+        );
+        assert_eq!(
+            resolve_cd_in_worktrees("worktree\\src", Windows, &windows_roots),
+            Some(PathBuf::from("C:/work/worktree\\src")),
+            "Windows-relative paths to subdirectories resolve to the same path, with Windows path style"
+>>>>>>> 14c30421f5 (fork: gemini const sanitizer, tool arg normalizer, terminal cd default)
         );
     }
 
@@ -3814,3 +3880,24 @@ mod tests {
         }
     }
 }
+
+fn working_dir(cd: &str, project: &Entity<Project>, cx: &mut App) -> Result<Option<PathBuf>> {
+    let project = project.read(cx);
+
+    if cd == "." || cd.is_empty() {
+        let mut worktrees = project.worktrees(cx);
+
+        match worktrees.next() {
+            Some(worktree) => {
+                anyhow::ensure!(
+                    worktrees.next().is_none(),
+                    "'.' is ambiguous in multi-root workspaces. Please specify a root directory explicitly.",
+                );
+                Ok(Some(worktree.read(cx).abs_path().to_path_buf()))
+            }
+            None => Ok(None),
+        }
+    } else {
+        let path_style = project.path_style(cx);
+        let worktree_roots = project
+            .worktrees(cx)

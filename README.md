@@ -7,6 +7,49 @@ Welcome to Zed, a high-performance, multiplayer code editor from the creators of
 
 ---
 
+## toxicwind fork ([toxicwind/zed](https://github.com/toxicwind/zed))
+
+Upstream: [zed-industries/zed](https://github.com/zed-industries/zed).  
+Private mirror: `toxicwind/zed-source` (`private` remote). Sync helper: `./sync-upstream.sh`.
+
+This tree is a **thin fork**. Everything below is **local-only** relative to `origin/main` (zed-industries). Keep these when rebasing.
+
+### What we added (and why)
+
+| Change | Why | Files |
+|--------|-----|--------|
+| **Agent grep respects `.ignore`** | Host trees contain multi‑GB JSONL / trajectories. Upstream grep only used gitignore-like defaults and **OOM'd** the agent on sovereign / antigravity dumps. Patterns from each worktree's `.ignore` are merged into the exclusion matcher. | `crates/agent/src/tools/grep_tool.rs` |
+| **Tests for `.ignore` + path helpers** | Guard the above; `extract_paths_from_results` reused outside tests. | same |
+| **Gemini `const` schema sanitizer** | Zed sends JSON Schema with `const` keyword; Google's Gemini API rejects it with `Unknown name "const"`. Strips `const`, collapses `anyOf`-with-const -> `enum`, drops `if/then/else` before constructing `FunctionDeclaration`. Prevents tool-call failures on all Gemini models. | `crates/google_ai/src/completion.rs` |
+| **Tool arg normalizer** | Models emit OpenAI/Anthropic-style field names (`working_directory`, `file_path`, `query`, `content`) but Zed expects `cd`, `path`, `regex`, `edits`. Maps common aliases per tool and coerces string->u64 for `timeout_ms`. Eliminates `thread.rs:1635 missing field` validation errors across terminal, edit_file, write_file, and grep tools. | `crates/agent/src/tools.rs`, `crates/agent/src/thread.rs` |
+| **Terminal `cd` default** | Models that omit `cd` from terminal calls hit a deserialization error. Adds `#[serde(default)]` so `.` is used when absent. | `crates/agent/src/tools/terminal_tool.rs` |
+| **Release build: sccache + mold** | Full Zed release rebuilds are brutal on this machine. Default `rustc-wrapper = sccache`, x86_64-linux links with **mold**, `script/build-release-cached` for agent/install paths. **Not** an editor behavior change. | `.cargo/config.toml`, `script/build-release-cached` |
+| **`sync-upstream.sh`** | Rebase/cherry-pick our agent patch onto latest `origin/main` and force-push `private`. | `sync-upstream.sh` |
+
+### What is *not* forked here
+
+- Language-model endpoints, oaicopilot wiring, and `api_url: http://127.0.0.1:25100` live in **user settings** (`~/.config/zed/settings.json`) and sovereign deploy scripts — not in this git delta.
+- Inference is **llama-swap** (toxicwind fork) on **:25100**. There is no vLLM.
+
+### Build (this host)
+
+```bash
+cd /home/toxic/projects/zed
+./script/build-release-cached
+# or: cargo build --release -p zed -p cli
+```
+
+Requires `sccache` and `mold` on `PATH` (see `.cargo/config.toml`).
+
+### Remotes
+
+```text
+origin   https://github.com/zed-industries/zed.git  (upstream, read-only)
+fork     https://github.com/toxicwind/zed.git      (our patches, public)
+```
+
+---
+
 ### Installation
 
 On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).

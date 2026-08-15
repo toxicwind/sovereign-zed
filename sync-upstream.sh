@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Sync upstream zed-industries/zed into our private fork
+# Sync upstream zed-industries/zed into our public fork
 # Usage: ./sync-upstream.sh [--dry-run]
 
 DRY_RUN="${1:-}"
 UPSTREAM="origin"       # https://github.com/zed-industries/zed.git
-PRIVATE="private"       # https://github.com/toxicwind/zed-source.git
+FORK="fork"             # https://github.com/toxicwind/zed.git
 
-echo "=== Syncing $UPSTREAM/main → $PRIVATE/main ==="
+echo "=== Syncing $UPSTREAM/main → $FORK/main ==="
 git fetch "$UPSTREAM" main
 git checkout main
 UPSTREAM_SHA=$(git rev-parse "$UPSTREAM/main")
@@ -35,8 +35,8 @@ if [ -n "$OUR_CHERRY" ]; then
     }
 fi
 
-echo "Pushing to private..."
+echo "Pushing to fork..."
 if [ -z "$DRY_RUN" ]; then
-    git push --force "$PRIVATE" main
+    git push --force "$FORK" main
 fi
 echo "=== Sync complete ==="

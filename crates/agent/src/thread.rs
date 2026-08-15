@@ -3490,7 +3490,7 @@ impl Thread {
         // Agent tools are JSON-schema tools. Custom text-tool deltas are rejected
         // before considering partial-vs-complete input for these local tools.
         let input = match tool_use.input.clone().into_json() {
-            Ok(input) => input,
+            Ok(input) => crate::tools::normalize_tool_args(&tool_use.name, input),
             Err(error) => {
                 return Some(Task::ready((
                     owning_message_ix,
