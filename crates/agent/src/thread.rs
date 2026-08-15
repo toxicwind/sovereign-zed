@@ -5731,6 +5731,27 @@ impl ToolCallEventStream {
     /// For authorizations that must always prompt regardless of settings
     /// (e.g. symlink-escape confirmations, sensitive settings-file edits),
     /// use [`Self::prompt`] instead.
+
+/// Tools that perform state-mutating, autonomous changes (filesystem writes, edits,
+/// deletions, moves, terminal execution). A model whose capabilities disable
+/// `autonomous_edits` is denied any of these regardless of the user's
+/// `tool_permissions` settings — this is a hard, credible-commitment boundary,
+/// not a prompt-level request.
+fn is_mutating_tool(tool_name: &str) -> bool {
+    matches!(
+        tool_name,
+        "write_file"
+            | "edit_file"
+            | "delete_path"
+            | "move_path"
+            | "rename_symbol"
+            | "create_directory"
+            | "copy_path"
+            | "terminal"
+            | "apply_code_action"
+    )
+}
+
     pub fn authorize(
         &self,
         title: impl Into<String>,
@@ -5744,6 +5765,23 @@ impl ToolCallEventStream {
         let input_values = context.input_values.clone();
         let check_settings: Box<dyn Fn(&App) -> ToolPermissionDecision> =
             Box::new(move |cx: &App| {
+                // Hard boundary: a model without the `autonomous_edits` capability
+                // may not perform state-mutating tool calls, no matter what the
+                // user's `tool_permissions` settings say. This enforces least
+                // privilege at the tool-dispatch layer (credible commitment),
+                // preventing an untrusted/low-trust model from expanding its own
+                // action space.
+                if is_mutating_tool(&tool_name)
+                    && !self
+                        .model
+                        .as_model()
+                        .map_or(true, |m| m.supports_autonomous_edits())
+                {
+                    return ToolPermissionDecision::Deny(
+                        "This model is configured without autonomous edit permission                          (capabilities.autonomous_edits = false). Mutating tools are disabled."
+                            .into(),
+                    );
+                }
                 decide_permission_from_settings(
                     &tool_name,
                     &input_values,

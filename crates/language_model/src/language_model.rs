@@ -165,6 +165,19 @@ pub trait LanguageModel: Send + Sync {
     /// Whether this model supports tools.
     fn supports_tools(&self) -> bool;
 
+    /// Whether this model is permitted to make autonomous, state-mutating
+    /// changes (writing/editing files, running terminal commands, moving or
+    /// deleting paths). When `false`, the agent's permission system denies any
+    /// mutating tool call for this model regardless of the user's
+    /// `tool_permissions` settings.
+    ///
+    /// Defaults to `true` so providers that don't model this capability keep
+    /// their current behavior; OpenAI-compatible providers read it from the
+    /// per-model `capabilities.autonomous_edits` setting.
+    fn supports_autonomous_edits(&self) -> bool {
+        true
+    }
+
     /// Whether this model supports choosing which tool to use.
     fn supports_tool_choice(&self, choice: LanguageModelToolChoice) -> bool;
 
