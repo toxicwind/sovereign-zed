@@ -3634,9 +3634,18 @@ fn combine_skills(
     // project-local skills with the same name shadow them.
     let mut skills = builtin_skills();
     let mut errors = Vec::new();
+    // The same SKILL.md can be scanned twice when a worktree root contains
+    // the global skills dir (e.g. opening $HOME as a project makes
+    // ~/.agents/skills both Global and ProjectLocal). Skip exact
+    // file duplicates so they don't trip the same-name override warning.
+    let mut seen_skill_files = HashSet::default();
     for result in global.into_iter().chain(project) {
         match result {
-            Ok(skill) => skills.push(skill),
+            Ok(skill) => {
+                if seen_skill_files.insert(skill.skill_file_path.clone()) {
+                    skills.push(skill);
+                }
+            }
             Err(e) => errors.push(e),
         }
     }

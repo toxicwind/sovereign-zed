@@ -1,9 +1,9 @@
 [build]
 # v0 mangling scheme provides more detailed backtraces around closures
 rustflags = ["-C", "symbol-mangling-version=v0", "--cfg", "tokio_unstable"]
-# Host default: sccache (local disk cache under SCCACHE_DIR, default ~/.cache/sccache)
+# Host default: ccache (local disk cache under SCCACHE_DIR, default ~/.cache/sccache)
 # Override with: RUSTC_WRAPPER= cargo build …
-rustc-wrapper = "sccache"
+rustc-wrapper = "ccache"
 
 [alias]
 xtask = "run --package xtask --"
@@ -33,5 +33,5 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 [env]
 MACOSX_DEPLOYMENT_TARGET = "10.15.7"
 # sccache local dir (also set in environment.d if desired)
-SCCACHE_DIR = { value = "/home/toxic/.cache/sccache", force = false }
+CCACHE_DIR = { value = "/home/toxic/.cache/ccache", force = false }
 
