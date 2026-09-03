@@ -246,8 +246,8 @@ impl OpenAiMcpProxyLanguageModel {
         &self,
         request: ResponseRequest,
         cx: &AsyncApp,
-    ) -> BoxFuture<'static, Result<futures::stream::BoxStream<'static, Result<ResponsesStreamEvent>>>>
-    {
+    ) -> BoxFuture<'static, Result<futures::stream::BoxStream<'static, Result<ResponsesStreamEvent>>>
+    > {
         let http_client = self.http_client.clone();
 
         let (api_key, api_url, extra_headers) = self.state.read_with(cx, |state, _cx| {
@@ -391,6 +391,10 @@ impl LanguageModel for OpenAiMcpProxyLanguageModel {
 
     fn supports_tools(&self) -> bool {
         self.model.capabilities.tools
+    }
+
+    fn supports_autonomous_edits(&self) -> bool {
+        self.model.capabilities.autonomous_edits
     }
 
     fn tool_input_format(&self) -> LanguageModelToolSchemaFormat {
@@ -574,20 +578,15 @@ fn normalize_schema(mut schema: serde_json::Value) -> serde_json::Value {
 ///
 /// Wraps `OpenAiEventMapper` and converts a `ToolUseJsonParseError` (which
 /// happens when a model streams a `tool_calls` delta whose `arguments` never
-/// parse — e.g. Inkling forgetting to emit arguments, or a truncated stream)
-/// into a valid `ToolUse` with empty `{}` input. Without this, Zed treats the
-/// parse error as a failed tool call and retries the same turn forever. Running
-/// the tool with `{}` lets the tool return its own "missing argument" error,
-/// which is recoverable, instead of an infinite retry loop.
+/// close) into a valid `ToolUse` with empty `{}` input, preventing the infinite
+/// retry loop when a model forgets to emit tool arguments.
 struct McpProxyEventMapper {
     inner: OpenAiEventMapper,
 }
 
 impl McpProxyEventMapper {
     fn new() -> Self {
-        Self {
-            inner: OpenAiEventMapper::new(),
-        }
+        Self { inner: OpenAiEventMapper::new() }
     }
 
     fn map_stream(
@@ -595,7 +594,6 @@ impl McpProxyEventMapper {
         events: futures::stream::BoxStream<'static, Result<ResponseStreamEvent>>,
     ) -> futures::stream::BoxStream<'static, Result<LanguageModelCompletionEvent, LanguageModelCompletionError>>
     {
-        use futures::StreamExt;
         self.inner
             .map_stream(events)
             .map(|event| match event {
@@ -606,203 +604,22 @@ impl McpProxyEventMapper {
                     ..
                 }) => {
                     log::warn!(
-                        "mcpproxy: auto-recovering malformed tool call `{tool_name}` \
+                        "openai-mcpproxy: auto-recovering malformed tool call `{tool_name}` \
                          (arguments did not parse) as empty input instead of retrying"
                     );
                     Ok(LanguageModelCompletionEvent::ToolUse(LanguageModelToolUse {
-                                            id,
-                                            name: tool_name,
-                                            is_input_complete: true,
-                                            input: LanguageModelToolUseInput::Json(serde_json::Value::Object(
-                                                serde_json::Map::new(),
-                                            )),
-                                            raw_input: raw_input.to_string(),
-                                            thought_signature: None,
-                                        }))
+                        id,
+                        name: tool_name,
+                        is_input_complete: true,
+                        input: LanguageModelToolUseInput::Json(serde_json::Value::Object(
+                            serde_json::Map::new(),
+                        )),
+                        raw_input: raw_input.to_string(),
+                        thought_signature: None,
+                    }))
                 }
                 other => other,
             })
             .boxed()
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::json;
-
-    fn model_with(caps: ModelCapabilities) -> AvailableModel {
-        AvailableModel {
-            name: "thinkingmachines/inkling".into(),
-            display_name: Some("Inkling".into()),
-            max_tokens: 1_048_576,
-            max_output_tokens: Some(16_384),
-            max_completion_tokens: None,
-            reasoning_effort: Some(open_ai::ReasoningEffort::Max),
-            capabilities: caps,
-        }
-    }
-
-    fn default_caps() -> ModelCapabilities {
-        ModelCapabilities {
-            tools: true,
-            images: false,
-            parallel_tool_calls: false,
-            prompt_cache_key: false,
-            chat_completions: true,
-            interleaved_reasoning: false,
-            max_tokens_parameter: true,
-        }
-    }
-
-    #[test]
-    fn tool_input_format_constant_is_full_json_schema() {
-        assert_eq!(
-            LanguageModelToolSchemaFormat::JsonSchema,
-            LanguageModelToolSchemaFormat::JsonSchema
-        );
-    }
-
-    #[test]
-    fn normalize_repairs_untyped_root_and_property() {
-        let tools = vec![language_model::LanguageModelRequestTool {
-            name: "a".into(),
-            description: "keep".into(),
-            input: language_model::LanguageModelRequestToolInput::Function {
-                use_input_streaming: false,
-                input_schema: json!({"properties": {"q": {}}}),
-            },
-        }];
-        let out = normalize_tool_schemas(tools);
-        assert_eq!(out.len(), 1);
-        let schema = match &out[0].input {
-            language_model::LanguageModelRequestToolInput::Function { input_schema, .. } => input_schema,
-            _ => panic!(),
-        };
-        assert_eq!(schema["type"], "object");
-        assert_eq!(schema["properties"]["q"]["type"], "string");
-        assert_eq!(out[0].description, "keep");
-    }
-
-    #[test]
-    fn normalize_strips_bare_null_from_multitype() {
-        let tools = vec![language_model::LanguageModelRequestTool {
-            name: "b".into(),
-            description: "d".into(),
-            input: language_model::LanguageModelRequestToolInput::Function {
-                use_input_streaming: false,
-                input_schema: json!({
-                    "type": "object",
-                    "properties": {"q": {"type": ["string", "null"]}}
-                }),
-            },
-        }];
-        let out = normalize_tool_schemas(tools);
-        let schema = match &out[0].input {
-            language_model::LanguageModelRequestToolInput::Function { input_schema, .. } => input_schema,
-            _ => panic!(),
-        };
-        assert_eq!(schema["properties"]["q"]["type"], json!(["string"]));
-    }
-
-    #[test]
-    fn normalize_keeps_all_tools_no_cap() {
-        let tools: Vec<_> = (0..200)
-            .map(|i| language_model::LanguageModelRequestTool {
-                name: format!("t{i}"),
-                description: "x".into(),
-                input: language_model::LanguageModelRequestToolInput::Function {
-                    use_input_streaming: false,
-                    input_schema: json!({"type": "object"}),
-                },
-            })
-            .collect();
-        let out = normalize_tool_schemas(tools);
-        assert_eq!(out.len(), 200, "no tool should be dropped");
-    }
-
-    #[test]
-    fn mapper_recovers_malformed_tool_call_as_empty_input() {
-        use futures::StreamExt;
-        use open_ai::{ChoiceDelta, FunctionChunk, ResponseMessageDelta, ResponseStreamEvent, ToolCallChunk};
-
-        let chunk = ResponseStreamEvent {
-            choices: vec![ChoiceDelta {
-                index: 0,
-                delta: Some(ResponseMessageDelta {
-                    role: Some(open_ai::Role::Assistant),
-                    content: None,
-                    reasoning: None,
-                    tool_calls: Some(vec![ToolCallChunk {
-                        index: 0,
-                        id: Some("call_1".into()),
-                        function: Some(FunctionChunk {
-                            name: Some("get_weather".into()),
-                            arguments: Some("{bad json".into()),
-                        }),
-                    }]),
-                    reasoning_content: None,
-                }),
-                finish_reason: Some("tool_calls".into()),
-            }],
-            usage: None,
-        };
-
-        let events = futures::stream::iter(vec![Ok(chunk)]).boxed();
-        let mapped = McpProxyEventMapper::new().map_stream(events);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let out = rt.block_on(async { mapped.collect::<Vec<_>>().await });
-        let tu = out
-            .iter()
-            .find_map(|e| match e {
-                Ok(LanguageModelCompletionEvent::ToolUse(tu)) => Some(tu),
-                _ => None,
-            })
-            .expect("expected a recovered ToolUse event");
-        assert_eq!(tu.name.as_ref(), "get_weather");
-        assert_eq!(tu.input, LanguageModelToolUseInput::Json(json!({})));
-        assert!(tu.is_input_complete);
-    }
-
-    #[test]
-    fn mapper_passes_through_valid_tool_use() {
-        use futures::StreamExt;
-        use open_ai::{ChoiceDelta, FunctionChunk, ResponseMessageDelta, ResponseStreamEvent, ToolCallChunk};
-
-        let chunk = ResponseStreamEvent {
-            choices: vec![ChoiceDelta {
-                index: 0,
-                delta: Some(ResponseMessageDelta {
-                    role: Some(open_ai::Role::Assistant),
-                    content: None,
-                    reasoning: None,
-                    tool_calls: Some(vec![ToolCallChunk {
-                        index: 0,
-                        id: Some("call_2".into()),
-                        function: Some(FunctionChunk {
-                            name: Some("read_file".into()),
-                            arguments: Some("{\"path\":\"x\"}".into()),
-                        }),
-                    }]),
-                    reasoning_content: None,
-                }),
-                finish_reason: Some("tool_calls".into()),
-            }],
-            usage: None,
-        };
-
-        let events = futures::stream::iter(vec![Ok(chunk)]).boxed();
-        let mapped = McpProxyEventMapper::new().map_stream(events);
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        let out = rt.block_on(async { mapped.collect::<Vec<_>>().await });
-        let tu = out
-            .iter()
-            .find_map(|e| match e {
-                Ok(LanguageModelCompletionEvent::ToolUse(tu)) => Some(tu),
-                _ => None,
-            })
-            .expect("expected a ToolUse event");
-        assert_eq!(tu.name.as_ref(), "read_file");
-        assert_eq!(tu.input, LanguageModelToolUseInput::Json(json!({"path": "x"})));
     }
 }

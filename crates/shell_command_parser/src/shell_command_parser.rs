@@ -1105,8 +1105,16 @@ fn extract_commands_from_extended_test_expr_inner(
     Some(())
 }
 
-#[cfg(test)]
+[cfg(test)]
 mod tests {
+    #[test]
+    fn test_echo_command() {
+        let command = "echo 'Hello, World!'";
+        let prefix = extract_terminal_command_prefix(command).unwrap();
+        assert_eq!(prefix.command, "echo");
+        assert_eq!(prefix.display, "echo 'Hello, World!'");
+        assert_eq!(prefix.normalized, "echo Hello, World!");
+    }
     use super::*;
 
     #[test]

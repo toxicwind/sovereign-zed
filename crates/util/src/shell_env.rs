@@ -19,6 +19,10 @@ fn parse_env_map_from_noisy_output(output: &str) -> Result<collections::HashMap<
 
 pub fn print_env() {
     let env_vars: HashMap<String, String> = std::env::vars().collect();
+    println!("Environment variables:");
+    for (key, value) in env_vars {
+        println!("{}: {}", key, value);
+    }
     let json = serde_json::to_string_pretty(&env_vars).unwrap_or_else(|err| {
         eprintln!("Error serializing environment variables: {}", err);
         std::process::exit(1);
@@ -154,7 +158,19 @@ async fn capture_unix(
     super::set_pre_exec_to_start_new_session(&mut command);
 
     let (env_output, process_output) = spawn_and_read_fd(command, fd_num).await?;
-    let env_output = String::from_utf8_lossy(&env_output);
+    let mut env_map = std::env::vars().collect();
+            env_map.insert("RUSTC_WRAPPER".to_string(), "sccache".to_string());
+            env_map.insert("SCCACHE_DIR".to_string(), "/home/toxic/cache/sccache".to_string());
+            env_map.insert("SCCACHE_CACHE_SIZE".to_string(), "10G".to_string());
+            env_map.insert("SCCACHE_IDLE_TIMEOUT".to_string(), "3600".to_string());
+            env_map.insert("SCCACHE_MAX_OPEN_FILES".to_string(), "1000".to_string());
+            env_map.insert("SCCACHE_COMPRESS".to_string(), "1".to_string());
+            env_map.insert("SCCACHE_NO_STATS".to_string(), "0".to_string());
+            print_env();
+            let env_output = serde_json::to_string(&env_map).unwrap_or_else(|err| {
+                eprintln!("Error serializing environment variables: {}", err);
+                std::process::exit(1);
+            });
 
     parse_env_output(
         &env_output,

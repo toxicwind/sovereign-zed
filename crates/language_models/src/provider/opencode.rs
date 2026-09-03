@@ -73,6 +73,7 @@ pub struct OpenCodeSettings {
     pub show_zen_models: bool,
     pub show_go_models: bool,
     pub show_free_models: bool,
+    pub api_key: Option<String>,
 }
 
 pub struct OpenCodeLanguageModelProvider {

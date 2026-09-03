@@ -239,8 +239,8 @@ impl OpenAiMcpProxyNvidiaLanguageModel {
         &self,
         request: ResponseRequest,
         cx: &AsyncApp,
-    ) -> BoxFuture<'static, Result<futures::stream::BoxStream<'static, Result<ResponsesStreamEvent>>>>
-    {
+    ) -> BoxFuture<'static, Result<futures::stream::BoxStream<'static, Result<ResponsesStreamEvent>>>
+    > {
         let http_client = self.http_client.clone();
 
         let (api_key, api_url, extra_headers) = self.state.read_with(cx, |state, _cx| {
@@ -361,6 +361,10 @@ impl LanguageModel for OpenAiMcpProxyNvidiaLanguageModel {
 
     fn supports_tools(&self) -> bool {
         self.model.capabilities.tools
+    }
+
+    fn supports_autonomous_edits(&self) -> bool {
+        self.model.capabilities.autonomous_edits
     }
 
     fn tool_input_format(&self) -> LanguageModelToolSchemaFormat {
