@@ -24,7 +24,10 @@ pub struct AllLanguageModelSettingsContent {
     pub open_router: Option<OpenRouterSettingsContent>,
     pub openai: Option<OpenAiSettingsContent>,
     pub openai_compatible: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
+    pub openai_mcpproxy: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
+    pub openai_mcpproxy_nvidia: Option<HashMap<Arc<str>, OpenAiCompatibleSettingsContent>>,
     pub vercel_ai_gateway: Option<VercelAiGatewaySettingsContent>,
+    pub nvidia: Option<NvidiaSettingsContent>,
     pub x_ai: Option<XAiSettingsContent>,
     #[serde(rename = "zed.dev")]
     pub zed_dot_dev: Option<ZedDotDevSettingsContent>,
@@ -282,7 +285,7 @@ pub struct OpenCodeAvailableModel {
     pub subscription: Option<OpenCodeModelSubscription>,
     /// Custom Model API URL to use for this model.
     pub custom_model_api_url: Option<String>,
-    /// Supported reasoning effort levels, for example `["low", "medium", "high"].
+    /// Supported reasoning effort levels, for example `["low", "medium", "high"]`.
     pub reasoning_effort_levels: Option<Vec<ReasoningEffort>>,
     /// When using OpenAiChat protocol, whether thinking tokens are sent as a dedicated `reasoning_content` field or inline in message text.
     #[serde(default)]
@@ -377,7 +380,7 @@ pub struct MistralAvailableModel {
 }
 
 #[with_fallible_options]
-#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
 pub struct OpenAiSettingsContent {
     pub api_url: Option<String>,
     pub available_models: Option<Vec<OpenAiAvailableModel>>,
@@ -398,11 +401,62 @@ pub struct OpenAiAvailableModel {
 }
 
 pub use language_model_core::ReasoningEffort as OpenAiReasoningEffort;
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct NvidiaAvailableModel {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub max_tokens: u64,
+    pub max_output_tokens: Option<u64>,
+    pub max_completion_tokens: Option<u64>,
+    pub reasoning_effort: Option<OpenAiReasoningEffort>,
+    pub supports_images: Option<bool>,
+    pub supports_tools: Option<bool>,
+    pub parallel_tool_calls: Option<bool>,
+}
+
+
 
 impl MergeFrom for OpenAiReasoningEffort {
     fn merge_from(&mut self, other: &Self) {
         *self = *other;
     }
+}
+
+impl From<OpenAiCompatibleSettingsContent> for OpenAiMcpProxySettingsContent {
+    fn from(c: OpenAiCompatibleSettingsContent) -> Self {
+        Self {
+            api_url: c.api_url,
+            available_models: c.available_models,
+            custom_headers: c.custom_headers,
+        }
+    }
+}
+
+impl From<OpenAiCompatibleSettingsContent> for OpenAiMcpProxyNvidiaSettingsContent {
+    fn from(c: OpenAiCompatibleSettingsContent) -> Self {
+        Self {
+            api_url: c.api_url,
+            available_models: c.available_models,
+            custom_headers: c.custom_headers,
+        }
+    }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct OpenAiMcpProxySettingsContent {
+    pub api_url: String,
+    pub available_models: Vec<OpenAiCompatibleAvailableModel>,
+    pub custom_headers: Option<HashMap<String, String>>,
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct OpenAiMcpProxyNvidiaSettingsContent {
+    pub api_url: String,
+    pub available_models: Vec<OpenAiCompatibleAvailableModel>,
+    pub custom_headers: Option<HashMap<String, String>>,
 }
 
 #[with_fallible_options]
@@ -457,6 +511,18 @@ pub struct OpenAiCompatibleModelCapabilities {
     pub interleaved_reasoning: bool,
     #[serde(default)]
     pub max_tokens_parameter: bool,
+    /// Whether this model is permitted to make autonomous, state-mutating
+    /// changes (writing/editing files, running terminal commands, moving or
+    /// deleting paths). When `false`, the agent's permission system denies any
+    /// mutating tool call for this model regardless of the user's `tool_permissions`
+    /// settings.
+    ///
+    /// This is a *credible commitment device*: it enforces least privilege at the
+    /// tool-dispatch boundary instead of relying on a prompt asking the model to
+    /// behave. Untrusted or free providers can be pinned to read-only operation so
+    /// a misaligned or reward-hacking model cannot expand its own action space.
+    #[serde(default = "default_true")]
+    pub autonomous_edits: bool,
 }
 
 impl Default for OpenAiCompatibleModelCapabilities {
@@ -469,6 +535,7 @@ impl Default for OpenAiCompatibleModelCapabilities {
             chat_completions: default_true(),
             interleaved_reasoning: false,
             max_tokens_parameter: false,
+            autonomous_edits: default_true(),
         }
     }
 }
@@ -531,6 +598,43 @@ pub struct XaiAvailableModel {
     pub parallel_tool_calls: Option<bool>,
 }
 
+#[with_fallible_options]
+#[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
+pub struct NvidiaSettingsContent {
+    pub api_url: Option<String>,
+    pub available_models: Option<Vec<NvidiaAvailableModelContent>>,
+    pub custom_headers: Option<HashMap<String, String>>,
+}
+
+impl From<NvidiaAvailableModelContent> for NvidiaAvailableModel {
+    fn from(c: NvidiaAvailableModelContent) -> Self {
+        Self {
+            name: c.name,
+            display_name: c.display_name,
+            max_tokens: c.max_tokens,
+            max_output_tokens: c.max_output_tokens,
+            max_completion_tokens: c.max_completion_tokens,
+            reasoning_effort: c.reasoning_effort,
+            supports_images: c.supports_images,
+            supports_tools: c.supports_tools,
+            parallel_tool_calls: c.parallel_tool_calls,
+        }
+    }
+}
+
+#[with_fallible_options]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, JsonSchema, MergeFrom)]
+pub struct NvidiaAvailableModelContent {
+    pub name: String,
+    pub display_name: Option<String>,
+    pub max_tokens: u64,
+    pub max_output_tokens: Option<u64>,
+    pub max_completion_tokens: Option<u64>,
+    pub reasoning_effort: Option<OpenAiReasoningEffort>,
+    pub supports_images: Option<bool>,
+    pub supports_tools: Option<bool>,
+    pub parallel_tool_calls: Option<bool>,
+}
 #[with_fallible_options]
 #[derive(Default, Clone, Debug, Serialize, Deserialize, PartialEq, JsonSchema, MergeFrom)]
 pub struct ZedDotDevSettingsContent {
