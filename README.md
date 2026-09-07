@@ -1,21 +1,19 @@
-# Zed
+# Zed (qed fork)
 
 [![Zed](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/zed-industries/zed/main/assets/badge/v0.json)](https://zed.dev)
 [![CI](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml/badge.svg)](https://github.com/zed-industries/zed/actions/workflows/run_tests.yml)
 
-Welcome to Zed, a high-performance, multiplayer code editor from the creators of [Atom](https://github.com/atom/atom) and [Tree-sitter](https://github.com/tree-sitter/tree-sitter).
+Welcome to **qed**, a high-performance, multiplayer code editor fork of [Zed](https://zed.dev) with sovereign agent support, LLM routing, and optimized build toolchain.
 
 ---
 
+## 🔱 toxicwind/qed
 
-
-## 🔱 toxicwind/zed
-
-*Last synced with upstream: **Jul 20, 2026** — [diff](https://github.com/toxicwind/zed/compare/main...zed-industries:zed:main)*
+*Last synced with upstream: **Jul 20, 2026** — [diff](https://github.com/toxicwind/qed/compare/main:zed-industries/zed)*
 
 This is a **thin fork** of [zed-industries/zed](https://github.com/zed-industries/zed) with patches focused on agent reliability, code search, and build toolchain. Every patch is meant for upstream — they just haven't gotten there yet.
 
-### What’s different
+### What's different
 
 | | Area | Patch | Why | Files |
 |-|------|-------|-----|-------|
@@ -26,12 +24,13 @@ This is a **thin fork** of [zed-industries/zed](https://github.com/zed-industrie
 | 🔍 | **Search** | **ast-grep dev helpers** | Shell wrapper for regex+structural search; `--help` to JSON schema parser. | `scripts/` |
 | ⚙️ | **Build** | **sccache + mold** | Default `rustc-wrapper = sccache`, links with `-fuse-ld=mold`. Cached build script for fast release rebuilds. | `.cargo/config.toml`, `script/build-release-cached` |
 | 🔄 | **Sync** | **`sync-upstream.sh`** | Rebases patches onto latest `origin/main` and force-pushes `fork`. | `sync-upstream.sh` |
+| 🤖 | **Router** | **pi-auto-router** | Multi-provider LLM routing with budget-aware policies and same-request failover. | `~/.tau/agent/extensions/pi-auto-router/` |
 
-### What’s *not* in this fork
+### What's *not* in this fork
 
 Language model endpoints, provider configs (OpenRouter, NVIDIA NIM, Google, Mistral, etc.), and API URLs all live in **user settings** (`~/.config/zed/settings.json`) and deploy scripts — not in this git delta. Inference runs on **[llama-swap](https://github.com/toxicwind/llama-swap-main)** (`:25100`). No vLLM.
 
-### What’s *new* in this fork
+### What's *new* in this fork
 
 #### 🔗 External Access — GHAS MCP Remote Configuration
 
@@ -54,36 +53,55 @@ Language model endpoints, provider configs (OpenRouter, NVIDIA NIM, Google, Mist
 
 **Security note:** Never expose MCP servers directly to the internet. Use Tailscale, WireGuard, or similar zero-trust networking.
 
+#### 🤖 pi-auto-router Extension
+
+| Component | Purpose | Files |
+|-----------|---------|-------|
+| **pi-auto-router** | Multi-provider LLM routing with budget-aware policies | `~/.tau/agent/extensions/pi-auto-router/` |
+| **Tau coding agent** | Agent runtime with web parts, reasoning, tool use | `~/.tau/` |
+| **llama-swap** | Local inference server at `:25100` | `~/projects/llama-swap-main/` |
+
+**Why it exists:** The upstream Zed editor has no built-in LLM router. pi-auto-router provides automatic provider selection, budget management, and failover across OpenRouter, NVIDIA NIM, Google, and local models.
+
+**Usage:**
+1. Install: `bun install --production` in `~/.tau/agent/extensions/pi-auto-router/`
+2. Configure providers in `~/.config/tau/settings.json`
+3. Web parts are max-enabled for full agent capabilities
+4. Launch tau in tmux: `tmux new-session -d -s tau 'tau'`
+
 ### Build
 
 ```bash
-cd /home/toxic/projects/zed
-./script/build-release-cached
+cd /home/toxic/projects/qed/editor
+cargo build --release
 ```
 
-Requires `sccache` and `mold` on `PATH` (see `.cargo/config.toml`).
+Uses the **sccache build server** (daemon PID 2063211) for distributed compilation caching and **mold linker** for fast linking. Configured in `.cargo/config.toml`.
+
+Also available via **forgewatch** build queue server at `http://127.0.0.1:7878`:
+```bash
+forgewatch run --file forgewatch.yml
+```
 
 ### Remotes
 
 ```text
 origin  https://github.com/zed-industries/zed.git   (upstream, read-only)
-fork    https://github.com/toxicwind/zed.git         (this repo)
+fork    https://github.com/toxicwind/qed.git         (this repo)
 ```
 
----
+### Install
 
-### Installation
+```bash
+# Binary is at /home/toxic/.local/bin/zed (symlink to zed-dev → target/release/zed)
+# Desktop entry: ~/.local/share/applications/dev.zed.Zed.desktop
+# Icon: ~/.local/share/icons/hicolor/256x256/apps/zed-sovereign.png
+```
 
-On macOS, Linux, and Windows you can [download Zed directly](https://zed.dev/download) or install Zed via your local package manager ([macOS](https://zed.dev/docs/installation#macos)/[Linux](https://zed.dev/docs/linux#installing-via-a-package-manager)/[Windows](https://zed.dev/docs/windows#package-managers)).
+### Development
 
-Other platforms are not yet available:
-
-- Web ([tracking discussion](https://github.com/zed-industries/zed/discussions/26195))
-
-### Developing Zed
-
-- [Building Zed for macOS](./docs/src/development/macos.md)
 - [Building Zed for Linux](./docs/src/development/linux.md)
+- [Building Zed for macOS](./docs/src/development/macos.md)
 - [Building Zed for Windows](./docs/src/development/windows.md)
 
 ### Contributing
@@ -108,7 +126,6 @@ We use [`cargo-about`](https://github.com/EmbarkStudios/cargo-about) to automati
 
 Zed is developed by **Zed Industries, Inc.**, a for-profit company.
 
-If you’d like to financially support the project, you can do so via GitHub Sponsors.
+If you'd like to financially support the project, you can do so via GitHub Sponsors.
 Sponsorships go directly to Zed Industries and are used as general company revenue.
 There are no perks or entitlements associated with sponsorship.
-

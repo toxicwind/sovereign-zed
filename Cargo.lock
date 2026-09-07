@@ -10168,6 +10168,7 @@ dependencies = [
  "log",
  "menu",
  "mistral",
+ "nvidia",
  "ollama",
  "open_ai",
  "open_router",
@@ -12218,7 +12219,7 @@ name = "nvidia"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "schemars 1.0.4",
+ "schemars 1.2.2",
  "serde",
  "strum 0.27.2",
 ]

@@ -1,0 +1,25 @@
+version: 1
+name: qed-release-build
+
+jobs:
+  build-zed:
+    name: "Compile Zed Release"
+    working_dir: /home/toxic/projects/qed/editor
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/toxic/cache.symlinked-8tb/sccache
+    run: |
+      cargo build --release
+    outputs:
+      - target/release/zed
+
+  build-util-fix:
+    name: "Fix shell_env.rs and rebuild"
+    working_dir: /home/toxic/projects/qed/editor
+    env:
+      RUSTC_WRAPPER: sccache
+      SCCACHE_DIR: /home/toxic/cache.symlinked-8tb/sccache
+    run: |
+      cargo build --release
+    outputs:
+      - target/release/zed
